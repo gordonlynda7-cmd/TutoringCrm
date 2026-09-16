@@ -91,3 +91,33 @@ def search_session_notes(query: str, db: DBSession, session_model, top_k: int = 
 
     scored_sessions.sort(key=lambda pair: pair[1], reverse=True)
     return scored_sessions[:top_k]
+
+
+def keyword_search_session_notes(query: str, db: DBSession, session_model, top_k: int = 5):
+    """
+    A lightweight fallback for search_session_notes that needs no API key.
+    Scores each session note by how many of the query's words it contains
+    (case-insensitive), so the search feature still works end to end
+    when OPENAI_API_KEY isn't set. Not semantic search, just word overlap,
+    but it's real, running code rather than a stub.
+
+    Returns the same shape as search_session_notes: a list of
+    (session_record, similarity_score) tuples, most relevant first.
+    """
+    query_words = set(query.lower().split())
+
+    all_sessions = db.query(session_model).all()
+
+    scored_sessions = []
+    for session_record in all_sessions:
+        if not session_record.notes:
+            continue
+        note_words = set(session_record.notes.lower().split())
+        overlap = query_words & note_words
+        if not overlap:
+            continue
+        score = len(overlap) / len(query_words)
+        scored_sessions.append((session_record, score))
+
+    scored_sessions.sort(key=lambda pair: pair[1], reverse=True)
+    return scored_sessions[:top_k]

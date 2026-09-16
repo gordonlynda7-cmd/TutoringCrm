@@ -4,6 +4,8 @@
 # frontend talks to: creating/listing students, creating/listing
 # sessions, and the natural-language search over session notes.
 
+import os
+
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session as DBSession
@@ -11,7 +13,7 @@ from sqlalchemy.orm import Session as DBSession
 import models
 import schemas
 from database import engine, get_db
-from rag_search import search_session_notes
+from rag_search import search_session_notes, keyword_search_session_notes
 
 # Creates all tables defined in models.py if they don't already exist.
 models.Base.metadata.create_all(bind=engine)
@@ -70,11 +72,15 @@ def create_session(session: schemas.SessionCreate, db: DBSession = Depends(get_d
 @app.post("/sessions/search", response_model=list[schemas.SearchResult])
 def search_notes(query: schemas.SearchQuery, db: DBSession = Depends(get_db)):
     """
-    Searches all session notes for the ones most semantically relevant
-    to a natural language query, using embeddings-based similarity.
-    Requires OPENAI_API_KEY to be set as an environment variable.
+    Searches all session notes for the ones most relevant to a natural
+    language query. Uses OpenAI embeddings when OPENAI_API_KEY is set;
+    otherwise falls back to simple keyword overlap scoring so the demo
+    keeps working without an API key.
     """
-    results = search_session_notes(query.text, db, models.Session, top_k=query.top_k)
+    if os.environ.get("OPENAI_API_KEY"):
+        results = search_session_notes(query.text, db, models.Session, top_k=query.top_k)
+    else:
+        results = keyword_search_session_notes(query.text, db, models.Session, top_k=query.top_k)
 
     return [
         schemas.SearchResult(
